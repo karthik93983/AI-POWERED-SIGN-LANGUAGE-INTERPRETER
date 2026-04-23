@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Sign Language Interpreter v2</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Inter',sans-serif;background:#0a0a0f;color:#e8e8f0;min-height:100vh;overflow-x:hidden;}
+    .bg-gradient{position:fixed;inset:0;z-index:0;
+      background:radial-gradient(ellipse at 20% 20%,rgba(99,102,241,.15) 0%,transparent 50%),
+                 radial-gradient(ellipse at 80% 80%,rgba(168,85,247,.1) 0%,transparent 50%),
+                 radial-gradient(ellipse at 50% 50%,rgba(14,165,233,.05) 0%,transparent 70%);}
+    #root{position:relative;z-index:1;}
+    .container{max-width:1280px;margin:0 auto;padding:24px 20px;}
+    .header{text-align:center;margin-bottom:28px;}
+    .header-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);border-radius:100px;padding:6px 16px;font-size:12px;font-weight:600;color:#a5b4fc;letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px;}
+    .pulse-dot{width:8px;height:8px;background:#6366f1;border-radius:50%;animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(.8);}}
+    .header h1{font-size:clamp(26px,4vw,44px);font-weight:800;background:linear-gradient(135deg,#e8e8f0 0%,#a5b4fc 50%,#c084fc 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1.15;margin-bottom:10px;}
+    .header p{color:#6b7280;font-size:14px;max-width:520px;margin:0 auto;line-height:1.6;}
+    .version-badge{display:inline-block;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#86efac;font-size:11px;font-weight:600;padding:2px 10px;border-radius:100px;margin-left:8px;vertical-align:middle;}
+
+    /* SERVER STATUS BAR */
+    .server-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 20px;border-radius:12px;margin-bottom:20px;font-size:13px;font-weight:500;border:1px solid;}
+    .server-bar.connected{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.25);color:#86efac;}
+    .server-bar.disconnected{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.25);color:#f87171;}
+    .server-bar.checking{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.25);color:#a5b4fc;}
+
+    .tabs{display:flex;gap:4px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:4px;margin-bottom:24px;width:fit-content;}
+    .tab{padding:8px 20px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:#6b7280;transition:all .2s;}
+    .tab.active{background:rgba(99,102,241,.2);color:#a5b4fc;border:1px solid rgba(99,102,241,.3);}
+    .main-grid{display:grid;grid-template-columns:1fr 400px;gap:24px;align-items:start;}
+    @media(max-width:960px){.main-grid{grid-template-columns:1fr;}}
+    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:22px;backdrop-filter:blur(20px);}
+    .card-title{font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+    .card-title-dot{width:6px;height:6px;border-radius:50%;background:#6366f1;}
+    .video-wrapper{position:relative;border-radius:14px;overflow:hidden;background:#0d0d18;aspect-ratio:4/3;border:1px solid rgba(255,255,255,.06);}
+    #webcam{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;}
+    #overlay-canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
+    .video-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;}
+    .video-placeholder-icon{width:64px;height:64px;border-radius:50%;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);display:flex;align-items:center;justify-content:center;font-size:28px;}
+    .video-status{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:100px;padding:5px 12px;font-size:11px;font-weight:600;}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;}
+    .status-dot.active{background:#22c55e;animation:pulse 1.5s infinite;}
+    .fps-badge{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:4px 10px;font-size:11px;color:#6b7280;font-family:monospace;}
+    .analyzing-overlay{position:absolute;inset:0;background:rgba(10,10,20,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;border-radius:14px;gap:10px;font-size:14px;font-weight:600;color:#a5b4fc;}
+    .angles-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:12px;}
+    .angle-card{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 6px;text-align:center;}
+    .angle-name{font-size:9px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+    .angle-val{font-size:15px;font-weight:700;margin:4px 0 2px;}
+    .angle-bar{height:3px;border-radius:100px;background:rgba(255,255,255,.06);overflow:hidden;}
+    .angle-fill{height:100%;border-radius:100px;transition:width .4s;}
+    .controls{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+    .btn{flex:1;min-width:110px;padding:11px 18px;border-radius:12px;border:none;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;}
+    .btn-primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;box-shadow:0 4px 20px rgba(99,102,241,.3);}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 25px rgba(99,102,241,.4);}
+    .btn-primary:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+    .btn-secondary{background:rgba(255,255,255,.06);color:#9ca3af;border:1px solid rgba(255,255,255,.08);}
+    .btn-secondary:hover{background:rgba(255,255,255,.1);color:#e8e8f0;}
+    .btn-secondary:disabled{opacity:.4;cursor:not-allowed;}
+    .btn-danger{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);}
+    .btn-danger:hover{background:rgba(239,68,68,.2);}
+    .right-panel{display:flex;flex-direction:column;gap:18px;}
+    .input-label{font-size:12px;font-weight:500;color:#6b7280;margin-bottom:7px;display:block;}
+    .threshold-row{display:flex;align-items:center;gap:12px;margin-top:10px;}
+    .threshold-slider{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:100px;background:rgba(255,255,255,.1);outline:none;}
+    .threshold-slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);cursor:pointer;box-shadow:0 0 8px rgba(99,102,241,.5);}
+    .threshold-label{font-size:13px;font-weight:700;color:#a5b4fc;min-width:36px;text-align:right;}
+    .mode-selector{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .mode-btn{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#6b7280;font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:all .2s;}
+    .mode-btn.active{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.4);color:#a5b4fc;}
+    .result-display{min-height:110px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+    .result-display::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(99,102,241,.05),transparent);pointer-events:none;}
+    .result-letter{font-size:60px;font-weight:800;background:linear-gradient(135deg,#a5b4fc,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;}
+    .result-word{font-size:22px;font-weight:700;background:linear-gradient(135deg,#a5b4fc,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-align:center;}
+    .result-placeholder{font-size:13px;color:#374151;text-align:center;}
+    .low-confidence{font-size:13px;color:#f59e0b;text-align:center;}
+    .confidence-row{margin-top:10px;display:flex;align-items:center;gap:10px;}
+    .conf-track{flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;}
+    .conf-fill{height:100%;border-radius:100px;transition:width .5s ease;}
+    .conf-label{font-size:11px;color:#6b7280;min-width:36px;text-align:right;}
+    .sentence-display{background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:12px 14px;min-height:54px;font-size:15px;font-weight:500;color:#d1d5db;line-height:1.6;word-break:break-word;}
+    .sentence-display.empty{color:#374151;font-weight:400;font-size:13px;}
+    .sentence-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+    .sentence-controls .btn{font-size:12px;padding:8px 12px;min-width:unset;flex:unset;}
+    .history-list{display:flex;flex-direction:column;gap:5px;max-height:140px;overflow-y:auto;}
+    .history-item{display:flex;align-items:center;gap:10px;padding:7px 11px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid rgba(255,255,255,.04);}
+    .history-gesture{font-size:15px;font-weight:700;color:#a5b4fc;min-width:32px;}
+    .history-conf{font-size:10px;padding:2px 7px;border-radius:100px;font-weight:600;}
+    .conf-high{background:rgba(34,197,94,.15);color:#86efac;}
+    .conf-low{background:rgba(245,158,11,.15);color:#fcd34d;}
+    .history-time{font-size:10px;color:#374151;margin-left:auto;}
+    .asl-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+    .asl-item{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:6px 4px;text-align:center;cursor:pointer;transition:all .2s;}
+    .asl-item:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);}
+    .asl-letter{font-size:16px;font-weight:800;color:#a5b4fc;}
+    .asl-hint{font-size:8px;color:#4b5563;margin-top:2px;line-height:1.3;}
+    .spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,.2);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .pipeline{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center;}
+    .pipeline-step{display:flex;align-items:center;gap:4px;font-size:10px;color:#4b5563;font-weight:500;}
+    .pipeline-step.active{color:#818cf8;}
+    .pipeline-step.done{color:#34d399;}
+    .pipeline-arrow{color:#1f2937;font-size:10px;}
+    .toast{position:fixed;bottom:24px;right:24px;background:rgba(20,20,30,.95);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 18px;font-size:13px;color:#e8e8f0;backdrop-filter:blur(20px);z-index:1000;animation:slideIn .3s ease;max-width:320px;}
+    .toast.error{border-color:rgba(239,68,68,.3);color:#f87171;}
+    .toast.success{border-color:rgba(34,197,94,.3);color:#86efac;}
+    @keyframes slideIn{from{transform:translateY(20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+    ::-webkit-scrollbar{width:4px;}
+    ::-webkit-scrollbar-track{background:transparent;}
+    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px;}
+  </style>
+</head>
+<body>
+<div class="bg-gradient"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const SERVER_URL = 'http://localhost:8080';
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+function drawHand(ctx, lms, W, H) {
+  const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(99,102,241,.65)'; ctx.lineWidth=2;
+  CONN.forEach(([a,b])=>{
+    ctx.beginPath();
+    ctx.moveTo(lms[a].x*W, lms[a].y*H);
+    ctx.lineTo(lms[b].x*W, lms[b].y*H);
+    ctx.stroke();
+  });
+  lms.forEach((lm,i)=>{
+    ctx.beginPath();
+    ctx.arc(lm.x*W, lm.y*H, i===0?7:i%4===0?5:3.5, 0, Math.PI*2);
+    ctx.fillStyle = i===0?'#c084fc':i%4===0?'#818cf8':'rgba(165,180,252,.85)';
+    ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.lineWidth=1; ctx.stroke();
+  });
+}
+
+function angleBetween(a, b, c) {
+  const v1={x:a.x-b.x,y:a.y-b.y,z:(a.z||0)-(b.z||0)};
+  const v2={x:c.x-b.x,y:c.y-b.y,z:(c.z||0)-(b.z||0)};
+  const dot=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z;
+  const m1=Math.sqrt(v1.x**2+v1.y**2+v1.z**2);
+  const m2=Math.sqrt(v2.x**2+v2.y**2+v2.z**2);
+  if(m1===0||m2===0) return 0;
+  return Math.round(Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))))*180/Math.PI);
+}
+
+function extractFeatures(lms) {
+  const fingers=[
+    {name:'Thumb', mcp:1,pip:2,dip:3,tip:4},
+    {name:'Index', mcp:5,pip:6,dip:7,tip:8},
+    {name:'Middle',mcp:9,pip:10,dip:11,tip:12},
+    {name:'Ring',  mcp:13,pip:14,dip:15,tip:16},
+    {name:'Pinky', mcp:17,pip:18,dip:19,tip:20},
+  ];
+  const angles=fingers.map(f=>({
+    name:f.name,
+    mcp_angle:angleBetween(lms[0],lms[f.mcp],lms[f.pip]),
+    pip_angle:angleBetween(lms[f.mcp],lms[f.pip],lms[f.dip]),
+    dip_angle:angleBetween(lms[f.pip],lms[f.dip],lms[f.tip]),
+    extended:lms[f.tip].y < lms[f.pip].y,
+    tip:{x:+lms[f.tip].x.toFixed(3),y:+lms[f.tip].y.toFixed(3),z:+(lms[f.tip].z||0).toFixed(3)},
+    pip_pos:{x:+lms[f.pip].x.toFixed(3),y:+lms[f.pip].y.toFixed(3)},
+  }));
+  const wrist=lms[0];
+  const palmFacing=wrist.z < lms[5].z ? 'toward_camera':'away_from_camera';
+  const allLandmarks=lms.map((l,i)=>({id:i,x:+l.x.toFixed(3),y:+l.y.toFixed(3),z:+(l.z||0).toFixed(3)}));
+  const pinchDist=+Math.sqrt((lms[4].x-lms[8].x)**2+(lms[4].y-lms[8].y)**2).toFixed(3);
+  return {angles,palmFacing,allLandmarks,pinchDist,wristPos:{x:+wrist.x.toFixed(3),y:+wrist.y.toFixed(3)}};
+}
+
+const ASL_REFERENCE=[
+  {l:'A',hint:'Fist, thumb side'},{l:'B',hint:'4 fingers up, thumb in'},{l:'C',hint:'Curved hand'},
+  {l:'D',hint:'Index up, others curl'},{l:'E',hint:'All fingers bent'},{l:'F',hint:'OK sign variation'},
+  {l:'G',hint:'Index points sideways'},{l:'H',hint:'Index+middle sideways'},{l:'I',hint:'Pinky up only'},
+  {l:'J',hint:'Pinky up, draw J'},{l:'K',hint:'Index+middle V, thumb between'},{l:'L',hint:'L-shape'},
+  {l:'M',hint:'3 fingers over thumb'},{l:'N',hint:'2 fingers over thumb'},{l:'O',hint:'All fingers form O'},
+  {l:'P',hint:'K pointing down'},{l:'Q',hint:'G pointing down'},{l:'R',hint:'Index+middle crossed'},
+  {l:'S',hint:'Fist, thumb over fingers'},{l:'T',hint:'Thumb between fingers'},{l:'U',hint:'Index+middle up together'},
+  {l:'V',hint:'Index+middle V up'},{l:'W',hint:'3 fingers spread'},{l:'X',hint:'Index hooked'},
+  {l:'Y',hint:'Thumb+pinky out'},{l:'Z',hint:'Index draws Z'},
+];
+
+function App() {
+  const videoRef=useRef(null); const canvasRef=useRef(null);
+  const handsRef=useRef(null); const cameraRef=useRef(null);
+  const fpsFrames=useRef(0); const fpsTimer=useRef(Date.now());
+
+  const [cameraOn,setCameraOn]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [confidence,setConfidence]=useState(0);
+  const [sentence,setSentence]=useState('');
+  const [history,setHistory]=useState([]);
+  const [toast,setToast]=useState(null);
+  const [fps,setFps]=useState(0);
+  const [handDetected,setHandDetected]=useState(false);
+  const [landmarks,setLandmarks]=useState(null);
+  const [features,setFeatures]=useState(null);
+  const [analyzing,setAnalyzing]=useState(false);
+  const [mode,setMode]=useState('letter');
+  const [threshold,setThreshold]=useState(75);
+  const [pipeStep,setPipeStep]=useState(0);
+  const [mpLoaded,setMpLoaded]=useState(false);
+  const [activeTab,setActiveTab]=useState('main');
+  const [serverStatus,setServerStatus]=useState('checking'); // checking | connected | disconnected
+
+  const showToast=useCallback((msg,type='info')=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3500); },[]);
+
+  // Check server health
+  const checkServer=useCallback(async()=>{
+    setServerStatus('checking');
+    try {
+      const r=await fetch(`${SERVER_URL}/health`,{signal:AbortSignal.timeout(3000)});
+      if(r.ok){ setServerStatus('connected'); }
+      else { setServerStatus('disconnected'); }
+    } catch(e){ setServerStatus('disconnected'); }
+  },[]);
+
+  useEffect(()=>{ checkServer(); },[]);
+
+  // Load MediaPipe
+  useEffect(()=>{
+    (async()=>{
+      try {
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js');
+        await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+        setMpLoaded(true);
+      } catch(e){ showToast('Failed to load MediaPipe libraries.','error'); }
+    })();
+  },[]);
+
+  const startCamera=useCallback(async()=>{
+    if(!mpLoaded){ showToast('Still loading libraries…','error'); return; }
+    setLoading(true);
+    try {
+      const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}});
+      const video=videoRef.current;
+      video.srcObject=stream;
+      await new Promise(r=>{ video.onloadedmetadata=r; });
+      video.play();
+      const hands=new window.Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+      hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.7,minTrackingConfidence:0.5});
+      hands.onResults(results=>{
+        const canvas=canvasRef.current; if(!canvas) return;
+        const ctx=canvas.getContext('2d');
+        canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+        fpsFrames.current++;
+        const now=Date.now();
+        if(now-fpsTimer.current>=1000){ setFps(fpsFrames.current); fpsFrames.current=0; fpsTimer.current=now; }
+        if(results.multiHandLandmarks?.length>0){
+          const lms=results.multiHandLandmarks[0];
+          setHandDetected(true); setLandmarks(lms);
+          setFeatures(extractFeatures(lms));
+          drawHand(ctx,lms,canvas.width,canvas.height);
+        } else {
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          setHandDetected(false); setLandmarks(null); setFeatures(null);
+        }
+      });
+      handsRef.current=hands;
+      const cam=new window.Camera(video,{onFrame:async()=>{ await hands.send({image:video}); },width:640,height:480});
+      cam.start(); cameraRef.current=cam;
+      setCameraOn(true); setPipeStep(1);
+    } catch(e){ showToast('Camera access denied. Please allow camera permissions.','error'); }
+    setLoading(false);
+  },[mpLoaded]);
+
+  const stopCamera=useCallback(()=>{
+    try{ cameraRef.current?.stop(); }catch(e){}
+    const video=videoRef.current;
+    if(video?.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); video.srcObject=null; }
+    try{ handsRef.current?.close(); }catch(e){}
+    setCameraOn(false); setHandDetected(false); setLandmarks(null); setFeatures(null);
+    const c=canvasRef.current; if(c) c.getContext('2d').clearRect(0,0,c.width,c.height);
+    setPipeStep(0);
+  },[]);
+
+  const analyze=useCallback(async()=>{
+    if(!landmarks||!features){ showToast('No hand detected! Show your hand clearly.','error'); return; }
+    if(serverStatus!=='connected'){ showToast('Server not running! Start server.py first.','error'); return; }
+    setAnalyzing(true); setPipeStep(3);
+
+    const anglesText=features.angles.map(f=>
+      `  ${f.name}: MCP=${f.mcp_angle}° PIP=${f.pip_angle}° DIP=${f.dip_angle}° | ${f.extended?'EXTENDED':'BENT'} | tip=(${f.tip.x},${f.tip.y},${f.tip.z})`
+    ).join('\n');
+    const topLandmarks=features.allLandmarks.map(l=>`${l.id}:(${l.x},${l.y},${l.z})`).join(' ');
+
+    const prompt=mode==='letter'
+      ? `You are an expert ASL (American Sign Language) hand gesture classifier.
+
+HAND ANALYSIS DATA:
+Palm orientation: ${features.palmFacing}
+Thumb-index pinch distance: ${features.pinchDist}
+Wrist position: (${features.wristPos.x}, ${features.wristPos.y})
+
+JOINT ANGLES (MCP=knuckle, PIP=middle joint, DIP=end joint):
+${anglesText}
+
+ALL 21 LANDMARK COORDINATES (x,y,z normalized 0-1):
+${topLandmarks}
+
+ASL LETTER KEY RULES:
+- A: all fingers bent/closed, thumb rests on side
+- B: index+middle+ring+pinky fully extended up, thumb folded
+- C: all fingers curved (~90°), forming C shape
+- D: index up, middle+ring+pinky curl to touch thumb
+- E: all 4 fingers bent down, thumb tucked under
+- F: index+thumb touching (small pinch dist <0.1), other 3 fingers up
+- G: index points sideways, thumb points same direction
+- H: index+middle both extended sideways
+- I: only pinky extended up, others closed
+- K: index+middle extended in V, thumb between them
+- L: index pointing up, thumb pointing out, others closed
+- M: 3 fingers (index+middle+ring) folded over thumb
+- N: 2 fingers (index+middle) folded over thumb
+- O: all fingers curve to meet thumb, pinch dist small
+- R: index+middle crossed
+- S: closed fist, thumb wrapped over fingers
+- T: thumb between index and middle finger
+- U: index+middle extended together pointing up
+- V: index+middle spread apart pointing up
+- W: index+middle+ring all spread up
+- X: index finger hooked/bent
+- Y: thumb+pinky extended, others closed
+Respond ONLY in this exact JSON:
+{"letter":"X","confidence":0.85,"description":"Brief description","alternatives":["Y","Z"]}`
+      : `You are an expert ASL interpreter. Identify the ASL word being signed.
+Palm: ${features.palmFacing}, Pinch: ${features.pinchDist}
+Angles:\n${anglesText}
+Respond ONLY in JSON: {"word":"HELLO","confidence":0.80,"description":"Open palm wave"}`;
+
+    try {
+      const res=await fetch(`${SERVER_URL}/analyze`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,mode:mode,messages:[{role:'user',content:prompt}]})
+      });
+      if(!res.ok){ const e=await res.json(); throw new Error(e.error?.message||`Server error ${res.status}`); }
+      const data=await res.json();
+      const text=data.content[0].text.trim().replace(/```json|```/g,'').trim();
+      let parsed;
+      try{ parsed=JSON.parse(text); }catch(e){ throw new Error('Could not parse AI response'); }
+
+      const gesture=mode==='letter'?parsed.letter:parsed.word;
+      const conf=Math.round((parsed.confidence||0.8)*100);
+
+      setResult({gesture,description:parsed.description||'',lowConf:false,alternatives:parsed.alternatives||[]});
+      setConfidence(conf);
+      if(conf>=threshold){
+        setPipeStep(4);
+        if(window.speechSynthesis){ const u=new SpeechSynthesisUtterance(gesture); u.rate=0.9; window.speechSynthesis.speak(u); }
+      } else {
+        showToast(`Low confidence (${conf}%) — try repositioning your hand.`,'error');
+      }
+      setHistory(prev=>[{gesture,conf,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}),desc:parsed.description,low:conf<threshold},...prev.slice(0,9)]);
+    } catch(e){
+      showToast(e.message||'Request failed','error');
+      setPipeStep(2);
+    }
+    setAnalyzing(false);
+  },[landmarks,features,mode,threshold,serverStatus]);
+
+  const addToSentence=()=>{ if(!result) return; setSentence(prev=>mode==='letter'?prev+result.gesture:prev+(prev?' ':'')+result.gesture); };
+  const speakSentence=()=>{ if(!sentence) return; const u=new SpeechSynthesisUtterance(sentence); u.rate=0.85; window.speechSynthesis.speak(u); };
+  const confColor=(c)=>c>=85?'#22c55e':c>=70?'#f59e0b':'#ef4444';
+  const PIPE_LABELS=['Input','Capture','Landmarks','Claude AI','Output'];
+
+  const ServerBar=()=>(
+    <div className={`server-bar ${serverStatus}`}>
+      {serverStatus==='checking' && <><div className="spinner" style={{borderTopColor:'#a5b4fc'}}/>Checking server connection…</>}
+      {serverStatus==='connected' && <>✅ Server connected at localhost:8080 — Ready to analyze!</>}
+      {serverStatus==='disconnected' && (
+        <>
+          ❌ Server not running — 
+          <strong style={{marginLeft:4}}>Run: python server.py</strong>
+          <button onClick={checkServer} style={{marginLeft:10,background:'rgba(239,68,68,.2)',border:'1px solid rgba(239,68,68,.3)',color:'#f87171',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:12,fontWeight:600}}>
+            Retry
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="container">
+      <div className="header">
+        <div className="header-badge"><div className="pulse-dot"/>AI-Powered</div>
+        <h1>Sign Language Interpreter <span className="version-badge">v2.1</span></h1>
+        <p>Full landmark XYZ · Joint angle analysis · Confidence threshold · Local server</p>
+      </div>
+
+      <ServerBar/>
+
+      <div style={{display:'flex',justifyContent:'center',marginBottom:22}}>
+        <div className="pipeline">
+          {PIPE_LABELS.map((label,i)=>(
+            <React.Fragment key={i}>
+              <div className={`pipeline-step ${pipeStep===i?'active':''} ${pipeStep>i?'done':''}`}>
+                <span>{pipeStep>i?'✓':(i+1)}</span><span>{label}</span>
+              </div>
+              {i<PIPE_LABELS.length-1&&<span className="pipeline-arrow">→</span>}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
+        <div className="tabs">
+          <div className={`tab ${activeTab==='main'?'active':''}`} onClick={()=>setActiveTab('main')}>🎥 Interpreter</div>
+          <div className={`tab ${activeTab==='ref'?'active':''}`} onClick={()=>setActiveTab('ref')}>📖 ASL Reference</div>
+          <div className={`tab ${activeTab==='debug'?'active':''}`} onClick={()=>setActiveTab('debug')}>📊 Landmark Data</div>
+        </div>
+      </div>
+
+      {activeTab==='main'&&(
+        <div className="main-grid">
+          <div>
+            <div className="card">
+              <div className="card-title"><div className="card-title-dot"/>Camera Feed</div>
+              <div className="video-wrapper">
+                <video ref={videoRef} id="webcam" playsInline muted style={{display:cameraOn?'block':'none'}}/>
+                <canvas ref={canvasRef} id="overlay-canvas" style={{display:cameraOn?'block':'none'}}/>
+                {!cameraOn&&(
+                  <div className="video-placeholder">
+                    <div className="video-placeholder-icon">📷</div>
+                    <p style={{color:'#4b5563',fontSize:'14px'}}>Camera is off</p>
+                    <p style={{color:'#1f2937',fontSize:'12px'}}>Click "Start Camera" to begin</p>
+                  </div>
+                )}
+                {analyzing&&(<div className="analyzing-overlay"><div className="spinner"/>Analyzing with Claude AI…</div>)}
+                {cameraOn&&(
+                  <>
+                    <div className="video-status"><div className={`status-dot ${handDetected?'active':''}`}/>{handDetected?'Hand Detected':'No Hand'}</div>
+                    <div className="fps-badge">{fps} FPS</div>
+                  </>
+                )}
+              </div>
+              {features&&(
+                <div className="angles-grid">
+                  {features.angles.map(f=>{
+                    const avg=Math.round((f.mcp_angle+f.pip_angle+f.dip_angle)/3);
+                    const pct=Math.min(100,Math.round(avg/180*100));
+                    const color=f.extended?'#22c55e':'#6366f1';
+                    return(
+                      <div className="angle-card" key={f.name}>
+                        <div className="angle-name">{f.name.slice(0,3)}</div>
+                        <div className="angle-val" style={{color}}>{f.extended?'↑':'↓'}</div>
+                        <div className="angle-bar"><div className="angle-fill" style={{width:`${pct}%`,background:color}}/></div>
+                        <div style={{fontSize:'9px',color:'#4b5563',marginTop:2}}>{avg}°</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="controls">
+                {!cameraOn?(
+                  <button className="btn btn-primary" onClick={startCamera} disabled={loading||!mpLoaded}>
+                    {loading?<><div className="spinner"/>Starting…</>:(!mpLoaded?'Loading libs…':'▶ Start Camera')}
+                  </button>
+                ):(
+                  <button className="btn btn-danger" onClick={stopCamera}>⬛ Stop</button>
+                )}
+                <button className="btn btn-primary" onClick={analyze}
+                  disabled={!cameraOn||!handDetected||analyzing||serverStatus!=='connected'}>
+                  {analyzing?<><div className="spinner"/>Analyzing…</>:'🔍 Analyze Gesture'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="right-panel">
+            <div className="card">
+              <div className="card-title"><div className="card-title-dot" style={{background:'#06b6d4'}}/>Recognition Settings</div>
+              <div className="mode-selector">
+                <div className={`mode-btn ${mode==='letter'?'active':''}`} onClick={()=>setMode('letter')}>🔤 Letter A–Z</div>
+                <div className={`mode-btn ${mode==='word'?'active':''}`} onClick={()=>setMode('word')}>💬 Word/Phrase</div>
+              </div>
+              <div style={{marginTop:14}}>
+                <label className="input-label">Confidence Threshold</label>
+                <div className="threshold-row">
+                  <input type="range" min={30} max={95} value={threshold} onChange={e=>setThreshold(+e.target.value)} className="threshold-slider"/>
+                  <span className="threshold-label">{threshold}%</span>
+                </div>
+                <div style={{fontSize:'11px',color:'#4b5563',marginTop:4}}>Results below {threshold}% flagged as uncertain</div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-title"><div className="card-title-dot" style={{background:'#22c55e'}}/>Recognized Gesture</div>
+              <div className="result-display">
+                {result?(
+                    <div style={{textAlign:'center'}}>
+                      <div className={mode==='letter'?'result-letter':'result-word'}>{result.gesture}</div>
+                      {result.description&&<div style={{fontSize:'11px',color:'#6b7280',marginTop:8}}>{result.description}</div>}
+                      {result.alternatives?.length>0&&<div style={{fontSize:'10px',color:'#4b5563',marginTop:4}}>Also possible: {result.alternatives.join(', ')}</div>}
+                    </div>
+                ):(
+                  <div className="result-placeholder">
+                    <div style={{fontSize:'32px',marginBottom:8}}>🤟</div>
+                    Show a gesture and click Analyze
+                  </div>
+                )}
+              </div>
+              {result&&(
+                <div className="confidence-row">
+                  <span style={{fontSize:'11px',color:'#6b7280'}}>Confidence</span>
+                  <div className="conf-track"><div className="conf-fill" style={{width:`${confidence}%`,background:confColor(confidence)}}/></div>
+                  <span className="conf-label" style={{color:confColor(confidence)}}>{confidence}%</span>
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="card-title"><div className="card-title-dot" style={{background:'#f59e0b'}}/>Sentence Builder</div>
+              <div className={`sentence-display ${!sentence?'empty':''}`}>{sentence||'Your words will appear here…'}</div>
+              <div className="sentence-controls">
+                <button className="btn btn-secondary" onClick={addToSentence} disabled={!result}>+ Add</button>
+                {mode==='letter'&&<button className="btn btn-secondary" onClick={()=>setSentence(p=>p+' ')} disabled={!sentence}>␣</button>}
+                <button className="btn btn-primary" onClick={speakSentence} disabled={!sentence}>🔊 Speak</button>
+                <button className="btn btn-secondary" onClick={()=>setSentence(p=>p.slice(0,-1))} disabled={!sentence}>⌫</button>
+                <button className="btn btn-danger" onClick={()=>setSentence('')} disabled={!sentence}>✕</button>
+              </div>
+            </div>
+
+            {history.length>0&&(
+              <div className="card">
+                <div className="card-title"><div className="card-title-dot" style={{background:'#8b5cf6'}}/>Recent Gestures</div>
+                <div className="history-list">
+                  {history.map((h,i)=>(
+                    <div className="history-item" key={i}>
+                      <span className="history-gesture">{h.gesture}</span>
+                      <span className={`history-conf ${h.low?'conf-low':'conf-high'}`}>{h.conf}%</span>
+                      <span style={{fontSize:'11px',color:'#4b5563',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{h.desc}</span>
+                      <span className="history-time">{h.time}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab==='ref'&&(
+        <div className="card" style={{maxWidth:800,margin:'0 auto'}}>
+          <div className="card-title"><div className="card-title-dot"/>ASL Alphabet Visual Reference</div>
+          <p style={{fontSize:'13px',color:'#6b7280',marginBottom:16,lineHeight:1.6}}>Position your hand correctly before analyzing for best results.</p>
+          <div className="asl-grid">
+            {ASL_REFERENCE.map(({l,hint})=>(
+              <div className="asl-item" key={l}>
+                <div className="asl-letter">{l}</div>
+                <div className="asl-hint">{hint}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{marginTop:20,padding:'14px',background:'rgba(99,102,241,.08)',border:'1px solid rgba(99,102,241,.15)',borderRadius:12}}>
+            <div style={{fontSize:'12px',fontWeight:700,color:'#a5b4fc',marginBottom:8}}>💡 Tips for better accuracy</div>
+            <div style={{fontSize:'12px',color:'#6b7280',lineHeight:1.8}}>
+              1. Ensure good lighting — avoid shadows on your hand<br/>
+              2. Use a plain background (white/grey wall works best)<br/>
+              3. Hold your hand ~30–50cm from the camera<br/>
+              4. Keep gesture steady for 1–2 seconds before clicking Analyze<br/>
+              5. Set threshold to 70% for lenient, 85% for strict recognition
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab==='debug'&&(
+        <div style={{maxWidth:800,margin:'0 auto',display:'flex',flexDirection:'column',gap:18}}>
+          <div className="card">
+            <div className="card-title"><div className="card-title-dot"/>Live Finger Joint Angles</div>
+            {features?(
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                {features.angles.map(f=>(
+                  <div key={f.name} style={{display:'grid',gridTemplateColumns:'80px 1fr 1fr 1fr 80px',gap:10,alignItems:'center'}}>
+                    <span style={{fontSize:'12px',fontWeight:700,color:f.extended?'#22c55e':'#6366f1'}}>{f.name}</span>
+                    {[['MCP',f.mcp_angle],['PIP',f.pip_angle],['DIP',f.dip_angle]].map(([joint,ang])=>(
+                      <div key={joint}>
+                        <div style={{fontSize:'9px',color:'#4b5563',marginBottom:3}}>{joint}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <div style={{flex:1,height:4,background:'rgba(255,255,255,.06)',borderRadius:100,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${Math.min(100,ang/180*100)}%`,background:'#6366f1',borderRadius:100}}/>
+                          </div>
+                          <span style={{fontSize:'10px',color:'#6b7280',minWidth:32}}>{ang}°</span>
+                        </div>
+                      </div>
+                    ))}
+                    <span style={{fontSize:'11px',fontWeight:600,color:f.extended?'#22c55e':'#f87171',textAlign:'right'}}>{f.extended?'Extended':'Bent'}</span>
+                  </div>
+                ))}
+                <div style={{marginTop:8,padding:'10px 12px',background:'rgba(0,0,0,.3)',borderRadius:8,fontSize:'12px',color:'#6b7280'}}>
+                  Palm: <span style={{color:'#a5b4fc'}}>{features.palmFacing}</span> &nbsp;|&nbsp;
+                  Pinch: <span style={{color:'#a5b4fc'}}>{features.pinchDist}</span> &nbsp;|&nbsp;
+                  Wrist: <span style={{color:'#a5b4fc'}}>({features.wristPos.x}, {features.wristPos.y})</span>
+                </div>
+              </div>
+            ):<div style={{color:'#374151',fontSize:'13px'}}>Start camera and show your hand to see live data.</div>}
+          </div>
+          <div className="card">
+            <div className="card-title"><div className="card-title-dot"/>All 21 Landmark XYZ Coordinates</div>
+            {features?(
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5}}>
+                {features.allLandmarks.map(l=>(
+                  <div key={l.id} style={{background:'rgba(0,0,0,.3)',border:'1px solid rgba(255,255,255,.04)',borderRadius:6,padding:'5px 8px',fontFamily:'monospace',fontSize:'10px'}}>
+                    <span style={{color:'#6366f1',fontWeight:700}}>#{l.id} </span>
+                    <span style={{color:'#9ca3af'}}>{l.x}, {l.y}, {l.z}</span>
+                  </div>
+                ))}
+              </div>
+            ):<div style={{color:'#374151',fontSize:'13px'}}>No hand detected.</div>}
+          </div>
+        </div>
+      )}
+
+      {toast&&<div className={`toast ${toast.type}`}>{toast.msg}</div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
